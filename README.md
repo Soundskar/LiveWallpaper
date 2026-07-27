@@ -12,6 +12,19 @@ Built with **C# / .NET 8 (WPF)** and an embedded **VLC** engine (LibVLCSharp) fo
 - Remembers your last wallpaper across restarts
 - Hardware-accelerated, low footprint (~120 MB RAM including the VLC engine)
 
+### Desktop pet 🐾
+
+An optional vector "desktop pet" (a little blob-cat named Pixel) that lives on top of your desktop:
+
+- Wanders, idles, sits, sleeps, blinks, and jumps on its own
+- Eyes follow your cursor
+- **Drag it** around — it falls with gravity and squishes on landing
+- **Right-click** for a menu: Feed 🍪, Play 🎾, Come here 👋, Sleep 😴, Party mode ✨, Rename, Hide
+- Tracks happiness & hunger stats
+- **Easter eggs:** double-click for a happy hop + hearts, click it rapidly to make it dizzy-spin, and toggle a rainbow "party mode"
+
+Enable it from the tray menu → **Show desktop pet 🐾**.
+
 ## Requirements
 
 - Windows 10 / 11
@@ -35,8 +48,9 @@ On first launch a file picker appears — choose a video or GIF. After that, use
 
 - `MainWindow` — a borderless, full-screen window hosting a VLC `VideoView`.
 - `WorkerW.cs` — Win32 interop that spawns the `WorkerW` window behind the desktop icons and reparents the wallpaper window into it.
-- `Settings.cs` — persists the last file and manages the Windows startup registry entry.
+- `Settings.cs` — persists the last file, pet options, and the Windows startup registry entry.
 - `App.xaml.cs` — application bootstrap and system-tray menu.
+- `PetWindow.xaml` / `PetWindow.xaml.cs` — the optional desktop pet: a transparent always-on-top window with a code-drawn vector character, a behavior state machine, physics-based dragging, and easter eggs.
 
 ## Roadmap
 

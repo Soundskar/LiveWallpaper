@@ -8,6 +8,8 @@ internal class Settings
 {
     public string? LastFile { get; set; }
     public int Volume { get; set; } = 0; // muted by default
+    public bool PetEnabled { get; set; } = false;
+    public string PetName { get; set; } = "Pixel";
 
     private static string Dir =>
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "LiveWallpaper");

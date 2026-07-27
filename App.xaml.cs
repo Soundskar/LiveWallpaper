@@ -13,6 +13,8 @@ public partial class App : System.Windows.Application
 
     private Forms.ToolStripMenuItem? _pauseItem;
     private Forms.ToolStripMenuItem? _startupItem;
+    private Forms.ToolStripMenuItem? _petItem;
+    private PetWindow? _pet;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -28,10 +30,37 @@ public partial class App : System.Windows.Application
 
         BuildTray();
 
+        if (_settings.PetEnabled)
+            ShowPet();
+
         if (!string.IsNullOrEmpty(_settings.LastFile) && System.IO.File.Exists(_settings.LastFile))
             _wallpaper.PlayFile(_settings.LastFile);
         else
             ChooseFile();
+    }
+
+    private void TogglePet(bool show)
+    {
+        _settings.PetEnabled = show;
+        _settings.Save();
+        if (show) ShowPet();
+        else HidePet();
+    }
+
+    private void ShowPet()
+    {
+        if (_pet != null) { _pet.Activate(); return; }
+        _pet = new PetWindow(_settings.PetName);
+        _pet.HiddenByUser += () => { if (_petItem != null) _petItem.Checked = false; TogglePet(false); };
+        _pet.NameChanged += name => { _settings.PetName = name; _settings.Save(); };
+        _pet.Closed += (_, _) => _pet = null;
+        _pet.Show();
+    }
+
+    private void HidePet()
+    {
+        _pet?.StopPet();
+        _pet = null;
     }
 
     private void BuildTray()
@@ -45,6 +74,16 @@ public partial class App : System.Windows.Application
         _pauseItem = new Forms.ToolStripMenuItem("Pause");
         _pauseItem.Click += (_, _) => TogglePause();
         menu.Items.Add(_pauseItem);
+
+        menu.Items.Add(new Forms.ToolStripSeparator());
+
+        _petItem = new Forms.ToolStripMenuItem("Show desktop pet 🐾")
+        {
+            Checked = _settings.PetEnabled,
+            CheckOnClick = true,
+        };
+        _petItem.Click += (_, _) => TogglePet(_petItem.Checked);
+        menu.Items.Add(_petItem);
 
         menu.Items.Add(new Forms.ToolStripSeparator());
 
@@ -100,6 +139,7 @@ public partial class App : System.Windows.Application
     {
         if (_tray != null) _tray.Visible = false;
         _tray?.Dispose();
+        _pet?.StopPet();
         _wallpaper?.Close();
         Shutdown();
     }
