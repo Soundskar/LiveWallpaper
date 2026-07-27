@@ -50,18 +50,33 @@ internal static class WorkerW
         // Ask Progman to spawn a WorkerW window behind the desktop icons.
         SendMessageTimeout(progman, WM_SPAWN_WORKERW, IntPtr.Zero, IntPtr.Zero, SMTO_NORMAL, 1000, out _);
 
-        // Find the WorkerW that hosts the desktop-icon view (SHELLDLL_DefView).
-        IntPtr workerw = FindWorkerW();
-
-        // Parent our window either to the found WorkerW or, as a fallback, to Progman.
-        IntPtr parent = workerw != IntPtr.Zero ? workerw : progman;
-        SetParent(windowHandle, parent);
-
         int width = GetSystemMetrics(SM_CXSCREEN);
         int height = GetSystemMetrics(SM_CYSCREEN);
+
+        // Windows 11 layout: the desktop icons (SHELLDLL_DefView) live directly under
+        // Progman. We must become a Progman child ordered *just below* the icons — that
+        // keeps the video above the static wallpaper but below the icons, so clicks
+        // still reach the desktop.
+        IntPtr defView = FindWindowEx(progman, IntPtr.Zero, "SHELLDLL_DefView", null);
+        if (defView != IntPtr.Zero)
+        {
+            SetParent(windowHandle, progman);
+            MoveWindow(windowHandle, 0, 0, width, height, true);
+            Native.SetWindowPos(windowHandle, defView, 0, 0, 0, 0,
+                Native.SWP_NOMOVE | Native.SWP_NOSIZE | Native.SWP_NOACTIVATE);
+            return true;
+        }
+
+        // Windows 10 layout: the icons live under a WorkerW; draw into the sibling
+        // WorkerW that sits behind them.
+        IntPtr workerw = FindWorkerW();
+        SetParent(windowHandle, workerw != IntPtr.Zero ? workerw : progman);
         MoveWindow(windowHandle, 0, 0, width, height, true);
         return true;
     }
+
+    /// <summary>Detaches the wallpaper window from the desktop (re-parents to null).</summary>
+    public static void DetachFromDesktop(IntPtr windowHandle) => SetParent(windowHandle, IntPtr.Zero);
 
     private static IntPtr FindWorkerW()
     {
