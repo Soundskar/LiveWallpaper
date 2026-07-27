@@ -14,14 +14,26 @@ Built with **C# / .NET 8 (WPF)** and an embedded **VLC** engine (LibVLCSharp) fo
 
 ### Desktop pet 🐾
 
-An optional vector "desktop pet" (a little blob-cat named Pixel) that lives on top of your desktop:
+An optional vector "desktop pet" (a little blob-cat named Pixel) that lives **strictly on the desktop layer** — it never covers your apps, and empty space around it is click-through so your desktop right-click still works.
 
+**Lively behavior**
 - Wanders, idles, sits, sleeps, blinks, and jumps on its own
-- Eyes follow your cursor
+- Eyes follow your cursor; greets you by time of day; sleeps at night
 - **Drag it** around — it falls with gravity and squishes on landing
-- **Right-click** for a menu: Feed 🍪, Play 🎾, Come here 👋, Sleep 😴, Party mode ✨, Rename, Hide
-- Tracks happiness & hunger stats
-- **Easter eggs:** double-click for a happy hop + hearts, click it rapidly to make it dizzy-spin, and toggle a rainbow "party mode"
+
+**Useful utilities**
+- **Health reminders** (toggleable): 20‑20‑20 eye rest, hourly hydration, and stretch/posture nudges
+- **Focus timer** (Pomodoro): 25 or 50 min — the pet settles while you focus and celebrates when done
+- **Battery awareness**: warns you when the battery runs low
+
+**Care & personality**
+- Happiness, hunger, and energy stats that slowly change and **persist between sessions** (decays sensibly while the app is closed)
+- Grows from baby to adult over its first week; shows a level in the menu
+- Right-click menu: Feed 🍪 · Play 🎾 · Come here 👋 · Do a spin 🌀 · Sleep 😴 · Focus timer · Party mode ✨ · Rename · Hide
+
+**Easter eggs:** double-click for a happy hop + hearts, click it rapidly to make it dizzy-spin, and a rainbow "party mode".
+
+**Light & efficient:** a single adaptive frame loop (fast only while moving, slow while idle), reused brushes with no per-frame allocations, and it fully **suspends while a fullscreen app or game is focused** so it never causes lag.
 
 Enable it from the tray menu → **Show desktop pet 🐾**.
 

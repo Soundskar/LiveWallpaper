@@ -49,10 +49,9 @@ public partial class App : System.Windows.Application
 
     private void ShowPet()
     {
-        if (_pet != null) { _pet.Activate(); return; }
-        _pet = new PetWindow(_settings.PetName);
+        if (_pet != null) { return; }
+        _pet = new PetWindow(_settings, () => _settings.Save());
         _pet.HiddenByUser += () => { if (_petItem != null) _petItem.Checked = false; TogglePet(false); };
-        _pet.NameChanged += name => { _settings.PetName = name; _settings.Save(); };
         _pet.Closed += (_, _) => _pet = null;
         _pet.Show();
     }

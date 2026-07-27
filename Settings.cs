@@ -4,12 +4,18 @@ using Microsoft.Win32;
 
 namespace LiveWallpaper;
 
-internal class Settings
+public class Settings
 {
     public string? LastFile { get; set; }
     public int Volume { get; set; } = 0; // muted by default
     public bool PetEnabled { get; set; } = false;
     public string PetName { get; set; } = "Pixel";
+    public int PetHappiness { get; set; } = 70;
+    public int PetHunger { get; set; } = 30;   // 0 = full, 100 = starving
+    public int PetEnergy { get; set; } = 80;
+    public bool PetReminders { get; set; } = true;
+    public DateTime PetLastSeenUtc { get; set; } = DateTime.UtcNow;
+    public DateTime PetBornUtc { get; set; } = DateTime.UtcNow;
 
     private static string Dir =>
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "LiveWallpaper");
