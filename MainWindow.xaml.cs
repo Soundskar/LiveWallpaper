@@ -14,8 +14,11 @@ public partial class MainWindow : Window
 {
     private LibVLC? _libVLC;
     private MediaPlayer? _player;
-    private readonly DispatcherTimer _clickThroughTimer = new() { Interval = TimeSpan.FromSeconds(1) };
+    private readonly DispatcherTimer _tickTimer = new() { Interval = TimeSpan.FromSeconds(1) };
     private Native.EnumChildProc? _markChild;   // kept alive against GC
+    private IntPtr _hwnd;
+    private bool _userPaused;   // paused via the tray
+    private bool _autoPaused;   // paused because the desktop is covered
 
     public MainWindow()
     {
@@ -35,6 +38,7 @@ public partial class MainWindow : Window
 
         // Attach behind the desktop icons once we have a native handle.
         var hwnd = new WindowInteropHelper(this).Handle;
+        _hwnd = hwnd;
         WorkerW.AttachToDesktop(hwnd);
 
         // The wallpaper is a non-interactive backdrop. Make it fully click-through so
@@ -49,10 +53,27 @@ public partial class MainWindow : Window
         // (and it recreates them when media changes), so keep re-marking the whole
         // window tree click-through every second.
         _markChild = (child, _) => { Native.AddTransparent(child); return true; };
-        _clickThroughTimer.Tick += (_, _) => Native.MakeTreeClickThrough(hwnd, _markChild);
-        _clickThroughTimer.Start();
+        _tickTimer.Tick += (_, _) => OnTick();
+        _tickTimer.Start();
         Native.MakeTreeClickThrough(hwnd, _markChild);
     }
+
+    private void OnTick()
+    {
+        Native.MakeTreeClickThrough(_hwnd, _markChild!);
+
+        // Auto-pause: stop decoding while a fullscreen/maximized window covers the
+        // desktop (e.g. a game or a maximized app) — there is nothing to see, so this
+        // saves CPU/GPU/battery. Resume when the desktop is visible again.
+        bool covered = Native.IsFullscreenAppForeground();
+        if (covered != _autoPaused)
+        {
+            _autoPaused = covered;
+            ApplyPlayback();
+        }
+    }
+
+    private void ApplyPlayback() => _player?.SetPause(_userPaused || _autoPaused);
 
     // Everything on the wallpaper reports "transparent" to the mouse, so all clicks
     // fall through to the desktop underneath.
@@ -78,7 +99,8 @@ public partial class MainWindow : Window
 
     public void SetPaused(bool paused)
     {
-        _player?.SetPause(paused);
+        _userPaused = paused;
+        ApplyPlayback();
     }
 
     public bool IsPlaying => _player?.IsPlaying ?? false;
