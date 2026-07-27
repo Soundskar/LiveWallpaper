@@ -55,7 +55,6 @@ public partial class PetWindow : Window
     private double _bubbleHideAt = -1;
     private double _chaseUntil, _focusUntil;
     private bool _suspended;   // fullscreen app in foreground
-    private bool _clickThrough = true;
 
     // reminder / clock accumulators (seconds since last fire)
     private double _eyeTimer, _waterTimer, _stretchTimer;
@@ -114,13 +113,6 @@ public partial class PetWindow : Window
         base.OnSourceInitialized(e);
         var dpi = VisualTreeHelper.GetDpi(this);
         _dpiX = dpi.DpiScaleX; _dpiY = dpi.DpiScaleY;
-
-        var hwnd = new WindowInteropHelper(this).Handle;
-        // Non-activating tool window so it never steals focus or shows in Alt-Tab.
-        int ex = Native.GetWindowLong(hwnd, Native.GWL_EXSTYLE);
-        Native.SetWindowLong(hwnd, Native.GWL_EXSTYLE, ex | Native.WS_EX_NOACTIVATE | Native.WS_EX_TOOLWINDOW);
-        SetClickThrough(true);
-        SendToDesktopLayer();
     }
 
     private void SendToDesktopLayer()
@@ -132,6 +124,13 @@ public partial class PetWindow : Window
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
+        // No-activate tool window so clicking the pet never raises it over apps or
+        // shows it in Alt-Tab. Click-through of empty space is handled per-pixel by
+        // the WM_NCHITTEST hook below (reliable on transparent WPF windows, where the
+        // WS_EX_TRANSPARENT style gets overwritten by the framework).
+        ApplyNoActivate();
+        ((HwndSource)PresentationSource.FromVisual(this)!).AddHook(WndProc);
+
         ApplyGrowth();
         SnapToGround();
         Left = Math.Max(WorkArea.Left, Math.Min(Left, WorkArea.Right - Width));
@@ -171,13 +170,13 @@ public partial class PetWindow : Window
         {
             _lastSlowChecks = t;
             UpdateSuspendState();
-            if (!_suspended) { SendToDesktopLayer(); UpdateReminders(); UpdateBattery(); }
+            if (!_suspended) { ApplyNoActivate(); SendToDesktopLayer(); UpdateReminders(); UpdateBattery(); }
             if (t - _lastSaveAt >= 30) { PersistState(); _lastSaveAt = t; }
         }
 
         if (_suspended) return;   // do nothing while a fullscreen app is up
 
-        bool hovered = UpdateClickThrough();
+        bool hovered = IsHovered();
 
         Blink(t);
         if (hovered || _state == State.Chase) FollowCursorWithEyes();
@@ -500,24 +499,37 @@ public partial class PetWindow : Window
         else { Visibility = Visibility.Visible; SendToDesktopLayer(); _timer.Interval = TimeSpan.FromMilliseconds(160); }
     }
 
-    private bool UpdateClickThrough()
+    private bool IsOverPet(Point local)
     {
-        if (_dragging) return true;
-        Point c = CursorLocal();
         double cx = Width / 2, cy = Height - 60;
-        bool over = (c.X - cx) * (c.X - cx) + (c.Y - cy) * (c.Y - cy) < 55 * 55;
-        SetClickThrough(!over);
-        return over;
+        return (local.X - cx) * (local.X - cx) + (local.Y - cy) * (local.Y - cy) < 55 * 55;
     }
 
-    private void SetClickThrough(bool on)
+    private bool IsHovered() => _dragging || IsOverPet(CursorLocal());
+
+    private void ApplyNoActivate()
     {
-        if (on == _clickThrough) return;
-        _clickThrough = on;
         var hwnd = new WindowInteropHelper(this).Handle;
-        int ex = Native.GetWindowLong(hwnd, Native.GWL_EXSTYLE);
-        ex = on ? ex | Native.WS_EX_TRANSPARENT : ex & ~Native.WS_EX_TRANSPARENT;
-        Native.SetWindowLong(hwnd, Native.GWL_EXSTYLE, ex);
+        long ex = Native.GetWindowLongPtr(hwnd, Native.GWL_EXSTYLE).ToInt64();
+        Native.SetWindowLongPtr(hwnd, Native.GWL_EXSTYLE,
+            new IntPtr(ex | Native.WS_EX_NOACTIVATE | Native.WS_EX_TOOLWINDOW));
+    }
+
+    // Empty space around the pet reports "transparent" so clicks (incl. right-click)
+    // fall through to the desktop; only the pet's body is solid to the mouse.
+    private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+    {
+        if (msg == Native.WM_NCHITTEST)
+        {
+            long lp = lParam.ToInt64();
+            short sx = (short)(lp & 0xFFFF);
+            short sy = (short)((lp >> 16) & 0xFFFF);
+            Point local;
+            try { local = PointFromScreen(new Point(sx, sy)); } catch { return IntPtr.Zero; }
+            handled = true;
+            return IsOverPet(local) ? new IntPtr(Native.HTCLIENT) : Native.HTTRANSPARENT;
+        }
+        return IntPtr.Zero;
     }
 
     private void PersistState()
@@ -566,15 +578,47 @@ internal static class Native
     public const int WS_EX_TRANSPARENT = 0x20;
     public const int WS_EX_TOOLWINDOW = 0x80;
     public const int WS_EX_NOACTIVATE = 0x08000000;
+    public const int WM_NCHITTEST = 0x0084;
+    public const int HTCLIENT = 1;
+    public static readonly IntPtr HTTRANSPARENT = new(-1);
     public static readonly IntPtr HWND_BOTTOM = new(1);
     public const uint SWP_NOMOVE = 0x0002, SWP_NOSIZE = 0x0001, SWP_NOACTIVATE = 0x0010;
 
     [DllImport("user32.dll", SetLastError = true)]
-    public static extern int GetWindowLong(IntPtr hWnd, int nIndex);
-    [DllImport("user32.dll", SetLastError = true)]
-    public static extern int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
-    [DllImport("user32.dll", SetLastError = true)]
     public static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int x, int y, int cx, int cy, uint flags);
+
+    public delegate bool EnumChildProc(IntPtr hWnd, IntPtr lParam);
+    [DllImport("user32.dll")]
+    public static extern bool EnumChildWindows(IntPtr parent, EnumChildProc cb, IntPtr lParam);
+
+    /// <summary>Marks a window and all of its child windows click-through.</summary>
+    public static void MakeTreeClickThrough(IntPtr root, EnumChildProc cb)
+    {
+        AddTransparent(root);
+        EnumChildWindows(root, cb, IntPtr.Zero);
+    }
+
+    public static void AddTransparent(IntPtr h)
+    {
+        long ex = GetWindowLongPtr(h, GWL_EXSTYLE).ToInt64();
+        if ((ex & WS_EX_TRANSPARENT) == 0)
+            SetWindowLongPtr(h, GWL_EXSTYLE, new IntPtr(ex | WS_EX_TRANSPARENT));
+    }
+
+    // 64-bit-safe GetWindowLongPtr / SetWindowLongPtr (fall back to 32-bit on x86).
+    [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW", SetLastError = true)]
+    private static extern IntPtr GetWindowLongPtr64(IntPtr hWnd, int nIndex);
+    [DllImport("user32.dll", EntryPoint = "GetWindowLongW", SetLastError = true)]
+    private static extern int GetWindowLong32(IntPtr hWnd, int nIndex);
+    [DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW", SetLastError = true)]
+    private static extern IntPtr SetWindowLongPtr64(IntPtr hWnd, int nIndex, IntPtr dwNewLong);
+    [DllImport("user32.dll", EntryPoint = "SetWindowLongW", SetLastError = true)]
+    private static extern int SetWindowLong32(IntPtr hWnd, int nIndex, int dwNewLong);
+
+    public static IntPtr GetWindowLongPtr(IntPtr h, int i) =>
+        IntPtr.Size == 8 ? GetWindowLongPtr64(h, i) : new IntPtr(GetWindowLong32(h, i));
+    public static IntPtr SetWindowLongPtr(IntPtr h, int i, IntPtr v) =>
+        IntPtr.Size == 8 ? SetWindowLongPtr64(h, i, v) : new IntPtr(SetWindowLong32(h, i, v.ToInt32()));
 
     [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")] private static extern bool GetWindowRect(IntPtr hWnd, out RECT r);

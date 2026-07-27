@@ -25,18 +25,27 @@ public partial class App : System.Windows.Application
 
         _settings = Settings.Load();
 
-        _wallpaper = new MainWindow();
-        _wallpaper.Show();
-
         BuildTray();
 
         if (_settings.PetEnabled)
             ShowPet();
 
+        // Only spin up the fullscreen wallpaper window when there is actually a video
+        // to show. Otherwise it would sit on the desktop and (on Windows 11, where
+        // embedding behind the icons is unreliable) block desktop clicks for no reason.
         if (!string.IsNullOrEmpty(_settings.LastFile) && System.IO.File.Exists(_settings.LastFile))
-            _wallpaper.PlayFile(_settings.LastFile);
-        else
-            ChooseFile();
+            EnsureWallpaper().PlayFile(_settings.LastFile);
+    }
+
+    private MainWindow EnsureWallpaper()
+    {
+        if (_wallpaper == null)
+        {
+            _wallpaper = new MainWindow();
+            _wallpaper.Closed += (_, _) => _wallpaper = null;
+            _wallpaper.Show();
+        }
+        return _wallpaper;
     }
 
     private void TogglePet(bool show)
@@ -121,7 +130,7 @@ public partial class App : System.Windows.Application
         {
             _settings.LastFile = dlg.FileName;
             _settings.Save();
-            _wallpaper?.PlayFile(dlg.FileName);
+            EnsureWallpaper().PlayFile(dlg.FileName);
             _paused = false;
             if (_pauseItem != null) _pauseItem.Text = "Pause";
         }
